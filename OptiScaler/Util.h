@@ -8,6 +8,15 @@
 #include <d3d12.h>
 #include <xess.h>
 
+#define SAFE_RELEASE(p)                                                                                                \
+    {                                                                                                                  \
+        if (p)                                                                                                         \
+        {                                                                                                              \
+            (p)->Release();                                                                                            \
+            (p) = NULL;                                                                                                \
+        }                                                                                                              \
+    }
+
 namespace Util
 {
 typedef struct _version_t

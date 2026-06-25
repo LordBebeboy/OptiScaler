@@ -1,4 +1,5 @@
 #pragma once
+#include "../Util.h"
 #include <d3dx/d3dx12.h>
 #include <vector>
 #include <stdexcept>

@@ -122,14 +122,7 @@ inline static void HookNgxApi(HMODULE nvngx)
         if (Original_Vulkan_GetFeatureRequirements != nullptr)
             DetourAttach(&(PVOID&) Original_Vulkan_GetFeatureRequirements, Hooked_Vulkan_GetFeatureRequirements);
 
-        auto detourResult = DetourTransactionCommit();
-        if (detourResult != NO_ERROR)
-        {
-            LOG_ERROR("Failed to hook NVSDK_NGX_XXXXXX_GetFeatureRequirements: {:X}", detourResult);
-            Original_D3D11_GetFeatureRequirements = nullptr;
-            Original_D3D12_GetFeatureRequirements = nullptr;
-            Original_Vulkan_GetFeatureRequirements = nullptr;
-        }
+        DetourTransactionCommit();
     }
 }
 
@@ -143,25 +136,24 @@ inline static void UnhookApis()
         DetourUpdateThread(GetCurrentThread());
 
         if (Original_D3D11_GetFeatureRequirements != nullptr)
+        {
             DetourDetach(&(PVOID&) Original_D3D11_GetFeatureRequirements, Hooked_Dx11_GetFeatureRequirements);
+            Original_D3D11_GetFeatureRequirements = nullptr;
+        }
 
         if (Original_D3D12_GetFeatureRequirements != nullptr)
+        {
             DetourDetach(&(PVOID&) Original_D3D12_GetFeatureRequirements, Hooked_Dx12_GetFeatureRequirements);
+            Original_D3D12_GetFeatureRequirements = nullptr;
+        }
 
         if (Original_Vulkan_GetFeatureRequirements != nullptr)
+        {
             DetourDetach(&(PVOID&) Original_Vulkan_GetFeatureRequirements, Hooked_Vulkan_GetFeatureRequirements);
-
-        auto detourResult = DetourTransactionCommit();
-        if (detourResult != NO_ERROR)
-        {
-            LOG_ERROR("Failed to unhook NVSDK_NGX_XXXXXX_GetFeatureRequirements: {:X}", detourResult);
-        }
-        else
-        {
-            Original_D3D11_GetFeatureRequirements = nullptr;
-            Original_D3D12_GetFeatureRequirements = nullptr;
             Original_Vulkan_GetFeatureRequirements = nullptr;
         }
+
+        DetourTransactionCommit();
     }
 }
 

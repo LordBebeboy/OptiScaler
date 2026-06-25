@@ -1,0 +1,58 @@
+name: Windows MSBuild
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - official-fsrr-port
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build Release x64
+        shell: pwsh
+        run: |
+          msbuild OptiScaler.sln /m /p:Configuration=Release /p:Platform=x64
+
+      - name: Show build outputs
+        if: always()
+        shell: pwsh
+        run: |
+          Get-ChildItem -Recurse -File | Where-Object {
+            $_.Name -match '\.(dll|exe|pdb|lib)$'
+          } | Select-Object FullName, Length
+
+      - name: Stage artifact
+        if: success()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+
+          Get-ChildItem -Recurse -File | Where-Object {
+            $_.Name -match '\.(dll|pdb|lib)$' -and
+            $_.FullName -match '(Release|x64)'
+          } | Copy-Item -Destination dist -Force
+
+          Copy-Item OptiScaler.ini dist\ -ErrorAction SilentlyContinue
+          Copy-Item setup_linux.sh dist\ -ErrorAction SilentlyContinue
+          Copy-Item setup_windows.bat dist\ -ErrorAction SilentlyContinue
+
+          Get-ChildItem dist
+
+      - name: Upload artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OptiScaler-FSR-RR-port
+          path: dist
+          if-no-files-found: warn

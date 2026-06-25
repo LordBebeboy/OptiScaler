@@ -7,9 +7,6 @@
 #include <proxies/KernelBase_Proxy.h>
 
 #include <shlobj.h>
-#include <cwctype>
-
-#include <hooks/Gdi32_Hooks.h>
 
 typedef LONG(WINAPI* RtlGetVersionPtr)(PRTL_OSVERSIONINFOW);
 typedef decltype(&GetFileVersionInfoSizeW) PFN_GetFileVersionInfoSizeW;
@@ -116,87 +113,35 @@ std::string Util::GetWindowsName(const OSVERSIONINFOW& os)
     return "Unknown Windows Version";
 }
 
-std::wstring Util::ToLower(std::wstring value)
-{
-    std::transform(value.begin(), value.end(), value.begin(),
-                   [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
-
-    return value;
-}
-
-static bool ContainsAny(const std::wstring& value, std::initializer_list<std::wstring_view> needles)
-{
-    for (auto needle : needles)
-    {
-        if (value.find(needle) != std::wstring::npos)
-            return true;
-    }
-
-    return false;
-}
-
-static bool HasUnrealBinariesParentStructure(const std::filesystem::path& exePath)
-{
-    auto platformDir = exePath.parent_path();
-
-    if (platformDir.empty())
-        return false;
-
-    auto binariesDir = platformDir.parent_path();
-
-    if (binariesDir.empty())
-        return false;
-
-    std::wstring binariesName = Util::ToLower(binariesDir.filename().wstring());
-
-    bool isBinariesFolder = binariesName == L"binaries";
-
-    if (!isBinariesFolder)
-        return false;
-
-    std::wstring platformName = Util::ToLower(platformDir.filename().wstring());
-
-    bool isWindowsPlatformFolder = platformName == L"win64" || platformName == L"win32" || platformName == L"wingdk" ||
-                                   platformName == L"windows" || platformName.starts_with(L"win");
-
-    return isBinariesFolder && isWindowsPlatformFolder;
-}
-
-void Util::GetExeInfo()
+std::wstring Util::GetExeProductName()
 {
     // In case of working ag version.dll
     // Loading original dll from system
-
-    auto exePath = Util::ExePath();
-    auto exeDir = exePath.parent_path();
-    auto exePathFilename = exePath.filename().string();
-    auto exePathFilenameW = exePath.filename().wstring();
-    State::Instance().gameExe = exePathFilename;
 
     wchar_t sysFolder[MAX_PATH];
     GetSystemDirectory(sysFolder, MAX_PATH);
     std::filesystem::path sysPath(sysFolder);
 
-    auto dll = NtdllProxy::LoadLibraryExW_Ldr(L"version.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    auto dll = LoadLibraryExW((sysPath / L"version.dll").c_str(), NULL, 0);
 
     if (dll == nullptr)
-        return;
+        return L"";
 
     auto o_GetFileVersionInfoSizeW = (PFN_GetFileVersionInfoSizeW) GetProcAddress(dll, "GetFileVersionInfoSizeW");
     auto o_GetFileVersionInfoW = (PFN_GetFileVersionInfoW) GetProcAddress(dll, "GetFileVersionInfoW");
     auto o_VerQueryValueW = (PFN_VerQueryValueW) GetProcAddress(dll, "VerQueryValueW");
 
     if (o_GetFileVersionInfoSizeW == nullptr || o_GetFileVersionInfoW == nullptr || o_VerQueryValueW == nullptr)
-        return;
+        return L"";
 
     DWORD handle = 0;
     DWORD versionSize = o_GetFileVersionInfoSizeW(Util::ExePath().c_str(), &handle);
     if (versionSize == 0)
-        return;
+        return L"";
 
     std::vector<BYTE> versionData(versionSize);
     if (!o_GetFileVersionInfoW(Util::ExePath().c_str(), handle, versionSize, versionData.data()))
-        return;
+        return L"";
 
     struct LANGANDCODEPAGE
     {
@@ -206,86 +151,17 @@ void Util::GetExeInfo()
 
     UINT cbTranslate = 0;
     if (!o_VerQueryValueW(versionData.data(), L"\\VarFileInfo\\Translation", (LPVOID*) &lpTranslate, &cbTranslate))
-        return;
+        return L"";
 
-    auto QueryVersionString = [&](const wchar_t* name) -> std::wstring
-    {
-        std::wstring query = L"\\StringFileInfo\\" +
-                             std::format(L"{:04x}{:04x}", lpTranslate[0].wLanguage, lpTranslate[0].wCodePage) + L"\\" +
-                             name;
+    std::wstring query = L"\\StringFileInfo\\" +
+                         std::format(L"{:04x}{:04x}", lpTranslate[0].wLanguage, lpTranslate[0].wCodePage) +
+                         L"\\ProductName";
+    LPWSTR productName = nullptr;
+    UINT size = 0;
+    if (o_VerQueryValueW(versionData.data(), query.c_str(), (LPVOID*) &productName, &size) && productName)
+        return productName;
 
-        LPWSTR value = nullptr;
-        UINT size = 0;
-
-        if (o_VerQueryValueW(versionData.data(), query.c_str(), reinterpret_cast<LPVOID*>(&value), &size) && value &&
-            size > 0)
-        {
-            return value;
-        }
-
-        return {};
-    };
-
-    std::wstring productName = QueryVersionString(L"ProductName");
-    std::wstring productVersion = QueryVersionString(L"ProductVersion");
-    std::wstring fileVersion = QueryVersionString(L"FileVersion");
-    std::wstring legalCopyright = QueryVersionString(L"LegalCopyright");
-    std::wstring companyName = QueryVersionString(L"CompanyName");
-    std::wstring fileDescription = QueryVersionString(L"FileDescription");
-
-    if (!productName.empty())
-    {
-        State::Instance().gameName = wstring_to_string(productName);
-    }
-
-    if (!productVersion.empty())
-    {
-        State::Instance().gameVersion = wstring_to_string(productVersion);
-    }
-    else if (!fileVersion.empty())
-    {
-        State::Instance().gameVersion = wstring_to_string(fileVersion);
-    }
-
-    std::wstring productLower = ToLower(productName);
-    std::wstring copyrightLower = ToLower(legalCopyright);
-    std::wstring companyLower = ToLower(companyName);
-    std::wstring descriptionLower = ToLower(fileDescription);
-    std::wstring exeLower = ToLower(exePathFilenameW);
-
-    bool hasUnityFiles =
-        std::filesystem::exists(exeDir / L"UnityPlayer.dll") || std::filesystem::exists(exeDir / L"GameAssembly.dll");
-
-    bool isUnity = hasUnityFiles || ContainsAny(productLower, { L"unity" }) ||
-                   ContainsAny(companyLower, { L"unity", L"unity technologies" }) ||
-                   ContainsAny(copyrightLower, { L"unity", L"unity technologies" }) ||
-                   ContainsAny(descriptionLower, { L"unity" });
-
-    if (isUnity)
-    {
-        State::Instance().gameEngine = GameEngineType::Unity;
-        return;
-    }
-
-    bool hasUnrealShippingExePattern =
-        exeLower.ends_with(L"-win64-shipping.exe") || exeLower.ends_with(L"-wingdk-shipping.exe") ||
-        exeLower.ends_with(L"-windows-shipping.exe") || exeLower.ends_with(L"-win64-test.exe") ||
-        exeLower.ends_with(L"-win64-debug.exe") || exeLower.ends_with(L"-windows-test.exe") ||
-        exeLower.ends_with(L"-windows-debug.exe");
-
-    bool hasUnrealBinariesStructure = HasUnrealBinariesParentStructure(exePath);
-
-    bool isUnreal = ContainsAny(productLower, { L"unreal", L"unreal engine" }) ||
-                    ContainsAny(companyLower, { L"epic games", L"epic games, inc." }) ||
-                    ContainsAny(copyrightLower, { L"epic games", L"unreal", L"unreal engine" }) ||
-                    ContainsAny(descriptionLower, { L"unreal", L"unreal engine" }) || hasUnrealShippingExePattern ||
-                    hasUnrealBinariesStructure;
-
-    if (isUnreal)
-    {
-        State::Instance().gameEngine = GameEngineType::Unreal;
-        return;
-    }
+    return L"";
 }
 
 std::filesystem::path Util::DllPath()
@@ -424,7 +300,7 @@ static inline std::string LogLastError()
     return result;
 }
 
-bool Util::GetFileVersion(std::wstring dllPath, version_t* fileVersionOut, version_t* productVersionOut)
+bool Util::GetDLLVersion(std::wstring dllPath, version_t* versionOut)
 {
     // Step 1: Get the size of the version information
     DWORD handle = 0;
@@ -453,27 +329,16 @@ bool Util::GetFileVersion(std::wstring dllPath, version_t* fileVersionOut, versi
         return false;
     }
 
-    if (fileInfo != nullptr && fileVersionOut != nullptr)
+    if (fileInfo != nullptr && versionOut != nullptr)
     {
         // Extract major, minor, build, and revision numbers from version information
         DWORD fileVersionMS = fileInfo->dwFileVersionMS;
         DWORD fileVersionLS = fileInfo->dwFileVersionLS;
 
-        fileVersionOut->major = (fileVersionMS >> 16) & 0xffff;
-        fileVersionOut->minor = (fileVersionMS >> 0) & 0xffff;
-        fileVersionOut->patch = (fileVersionLS >> 16) & 0xffff;
-        fileVersionOut->reserved = (fileVersionLS >> 0) & 0xffff;
-
-        if (productVersionOut != nullptr)
-        {
-            DWORD productVersionMS = fileInfo->dwProductVersionMS;
-            DWORD productVersionLS = fileInfo->dwProductVersionLS;
-
-            productVersionOut->major = (productVersionMS >> 16) & 0xffff;
-            productVersionOut->minor = (productVersionMS >> 0) & 0xffff;
-            productVersionOut->patch = (productVersionLS >> 16) & 0xffff;
-            productVersionOut->reserved = (productVersionLS >> 0) & 0xffff;
-        }
+        versionOut->major = (fileVersionMS >> 16) & 0xffff;
+        versionOut->minor = (fileVersionMS >> 0) & 0xffff;
+        versionOut->patch = (fileVersionLS >> 16) & 0xffff;
+        versionOut->reserved = (fileVersionLS >> 0) & 0xffff;
     }
     else
     {
@@ -483,23 +348,26 @@ bool Util::GetFileVersion(std::wstring dllPath, version_t* fileVersionOut, versi
     return true;
 }
 
-bool Util::IsSubpath(const std::filesystem::path& path, const std::filesystem::path& base)
+bool Util::GetDLLVersion(std::wstring dllPath, xess_version_t* xessVersionOut)
 {
-    auto rel = std::filesystem::relative(path, base);
-    auto first = *rel.begin();
-    return first != "." && first != "..";
+    version_t tempVersion;
+    auto result = Util::GetDLLVersion(dllPath, &tempVersion);
+
+    // Don't assume that the structs are identical
+    if (result)
+    {
+        xessVersionOut->major = tempVersion.major;
+        xessVersionOut->minor = tempVersion.minor;
+        xessVersionOut->patch = tempVersion.patch;
+        xessVersionOut->reserved = tempVersion.reserved;
+    }
+
+    return result;
 }
 
 std::optional<std::filesystem::path> Util::FindFilePath(const std::filesystem::path& startDir,
-                                                        const std::filesystem::path& fileName)
+                                                        const std::filesystem::path fileName)
 {
-    std::filesystem::path optiPath(Config::Instance()->MainDllPath.value());
-    optiPath /= L"streamline";
-    auto normalizedStreamlinePath = optiPath.lexically_normal();
-
-    const bool isDlssgOutput = State::Instance().activeFgOutput == FGOutput::DLSSG ||
-                               State::Instance().activeFgOutput == FGOutput::DLSSGWithNvngx;
-
     // 1) Direct check in startDir
     std::filesystem::path candidate = startDir / fileName;
     if (std::filesystem::exists(candidate) && std::filesystem::is_regular_file(candidate))
@@ -514,12 +382,8 @@ std::optional<std::filesystem::path> Util::FindFilePath(const std::filesystem::p
     {
         if (!entry.is_directory() && entry.path().filename() == fileName)
         {
-            auto normalizedPath = entry.path().lexically_normal();
-            if (isDlssgOutput || !IsSubpath(normalizedPath, normalizedStreamlinePath))
-            {
-                LOG_INFO(L"{} found at {}", fileName.wstring(), entry.path().parent_path().wstring());
-                return entry.path();
-            }
+            LOG_INFO(L"{} found at {}", fileName.wstring(), entry.path().parent_path().wstring());
+            return entry.path();
         }
     }
 
@@ -542,12 +406,8 @@ std::optional<std::filesystem::path> Util::FindFilePath(const std::filesystem::p
             {
                 if (!entry.is_directory() && entry.path().filename() == fileName)
                 {
-                    auto normalizedPath = entry.path().lexically_normal();
-                    if (isDlssgOutput || !IsSubpath(normalizedPath, normalizedStreamlinePath))
-                    {
-                        LOG_INFO(L"{} found at {}", fileName.wstring(), entry.path().parent_path().wstring());
-                        return entry.path();
-                    }
+                    LOG_INFO(L"{} found at {}", fileName.wstring(), entry.path().parent_path().wstring());
+                    return entry.path();
                 }
             }
 
@@ -797,94 +657,4 @@ void Util::LoadProxyLibrary(const std::wstring& name, const std::wstring& optiPa
 
     if (*loadedModule == nullptr)
         LOG_WARN("Can't find {}, returning nullptr!", wstring_to_string(name));
-}
-
-std::map<Util::Luid, std::filesystem::path> Util::GetDriverStore()
-{
-    std::map<Util::Luid, std::filesystem::path> result;
-
-    // Load D3DKMT functions dynamically
-    bool libraryLoaded = false;
-    HMODULE hGdi32 = KernelBaseProxy::GetModuleHandleW_()(L"Gdi32.dll");
-
-    if (hGdi32 == nullptr)
-    {
-        hGdi32 = NtdllProxy::LoadLibraryExW_Ldr(L"Gdi32.dll", NULL, 0);
-        libraryLoaded = hGdi32 != nullptr;
-    }
-
-    if (hGdi32 == nullptr)
-    {
-        LOG_ERROR("Failed to load Gdi32.dll");
-        return result;
-    }
-
-    do
-    {
-        auto o_D3DKMTEnumAdapters =
-            (PFN_D3DKMTEnumAdapters) KernelBaseProxy::GetProcAddress_()(hGdi32, "D3DKMTEnumAdapters");
-        auto o_D3DKMTQueryAdapterInfo =
-            (PFN_D3DKMTQueryAdapterInfo) KernelBaseProxy::GetProcAddress_()(hGdi32, "D3DKMTQueryAdapterInfo");
-        auto o_D3DKMTCloseAdapter =
-            (PFN_D3DKMTCloseAdapter) KernelBaseProxy::GetProcAddress_()(hGdi32, "D3DKMTCloseAdapter");
-
-        if (o_D3DKMTEnumAdapters == nullptr || o_D3DKMTQueryAdapterInfo == nullptr || o_D3DKMTCloseAdapter == nullptr)
-        {
-            LOG_ERROR("Failed to resolve D3DKMT functions");
-            break;
-        }
-
-        D3DKMT_UMDFILENAMEINFO umdFileInfo = {};
-        D3DKMT_QUERYADAPTERINFO queryAdapterInfo = {};
-
-        queryAdapterInfo.Type = KMTQAITYPE_UMDRIVERNAME;
-        queryAdapterInfo.pPrivateDriverData = &umdFileInfo;
-        queryAdapterInfo.PrivateDriverDataSize = sizeof(umdFileInfo);
-
-        D3DKMT_ENUMADAPTERS enumAdapters = {};
-
-        // Query the number of adapters first
-        if (o_D3DKMTEnumAdapters(&enumAdapters) != 0)
-        {
-            LOG_ERROR("Failed to enumerate adapters.");
-            break;
-        }
-
-        // If there are any adapters, the first one should be in the list
-        if (enumAdapters.NumAdapters > 0)
-        {
-            for (size_t i = 0; i < enumAdapters.NumAdapters; i++)
-            {
-                D3DKMT_ADAPTERINFO adapter = enumAdapters.Adapters[i];
-                queryAdapterInfo.hAdapter = adapter.hAdapter;
-
-                auto hr = o_D3DKMTQueryAdapterInfo(&queryAdapterInfo);
-
-                if (hr != 0)
-                    LOG_WARN("Failed to query adapter info {:X}", hr);
-                else
-                {
-                    Util::Luid luid(adapter.AdapterLuid.LowPart, adapter.AdapterLuid.HighPart);
-                    result.emplace(std::move(luid), std::filesystem::path(umdFileInfo.UmdFileName).parent_path());
-                }
-
-                D3DKMT_CLOSEADAPTER closeAdapter = {};
-                closeAdapter.hAdapter = adapter.hAdapter;
-                auto closeResult = o_D3DKMTCloseAdapter(&closeAdapter);
-                if (closeResult != 0)
-                    LOG_ERROR("D3DKMTCloseAdapter error: {:X}", closeResult);
-            }
-        }
-        else
-        {
-            LOG_ERROR("No adapters found.");
-            break;
-        }
-
-    } while (false);
-
-    if (libraryLoaded)
-        NtdllProxy::FreeLibrary_Ldr(hGdi32);
-
-    return result;
 }

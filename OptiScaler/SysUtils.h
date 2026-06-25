@@ -10,6 +10,8 @@
 #include <stdint.h>
 #include <libloaderapi.h>
 #include <ranges>
+#include <concepts>
+#include <string_view>
 
 #include <winternl.h>
 #include <d3dkmthk.h>
@@ -61,19 +63,8 @@
 #include <d3d12sdklayers.h>
 #endif
 
-// Enables Low Latency inputs
-// #define LOW_LATENCY_INPUTS
-
-#ifdef LOW_LATENCY_INPUTS
-#define XELL_EXPORT_API
-#endif
-
 // Use vkQueueSubmit2KHR instead of vkQueueSubmit for testing Linux issue
 // #define USE_QUEUE_SUBMIT_2_KHR
-
-// Don't skip spoofing for XeSS features
-// Which would ONLY disable XMX when using spoofing
-// #define DONT_USE_XMX
 
 inline HMODULE dllModule = nullptr;
 inline HMODULE exeModule = nullptr;
@@ -87,30 +78,38 @@ inline HMODULE slInterposerModule = nullptr;
 inline DWORD processId;
 
 #define LOG_TRACE(msg, ...) spdlog::trace(__FUNCTION__ " " msg, ##__VA_ARGS__)
-
 #define LOG_DEBUG(msg, ...) spdlog::debug(__FUNCTION__ " " msg, ##__VA_ARGS__)
-
-#ifdef DETAILED_DEBUG_LOGS
-#define LOG_DEBUG_ONLY(msg, ...) spdlog::debug(__FUNCTION__ " " msg, ##__VA_ARGS__)
-#else
-#define LOG_DEBUG_ONLY(msg, ...)
-#endif
-
-#ifdef LOG_ASYNC
-#define LOG_DEBUG_ASYNC(msg, ...) spdlog::debug(__FUNCTION__ " " msg, ##__VA_ARGS__)
-#else
-#define LOG_DEBUG_ASYNC(msg, ...)
-#endif
-
 #define LOG_INFO(msg, ...) spdlog::info(__FUNCTION__ " " msg, ##__VA_ARGS__)
-
 #define LOG_WARN(msg, ...) spdlog::warn(__FUNCTION__ " " msg, ##__VA_ARGS__)
-
 #define LOG_ERROR(msg, ...) spdlog::error(__FUNCTION__ " " msg, ##__VA_ARGS__)
 
-#define LOG_FUNC() spdlog::trace(__FUNCTION__)
+#define WLOG_TRACE(msg, ...) spdlog::trace(L"" __FUNCTIONW__ L" " msg, ##__VA_ARGS__)
+#define WLOG_DEBUG(msg, ...) spdlog::debug(L"" __FUNCTIONW__ L" " msg, ##__VA_ARGS__)
+#define WLOG_INFO(msg, ...) spdlog::info(L"" __FUNCTIONW__ L" " msg, ##__VA_ARGS__)
+#define WLOG_WARN(msg, ...) spdlog::warn(L"" __FUNCTIONW__ L" " msg, ##__VA_ARGS__)
+#define WLOG_ERROR(msg, ...) spdlog::error(L"" __FUNCTIONW__ L" " msg, ##__VA_ARGS__)
 
-#define LOG_FUNC_RESULT(result) spdlog::trace(__FUNCTION__ " result: {0:X}", (UINT64) result)
+#define LOG_FUNC() spdlog::trace(__FUNCTION__)
+#define LOG_FUNC_RESULT(result) spdlog::trace(__FUNCTION__ " result: {0:X}", (uint64_t) result)
+#define WLOG_FUNC_RESULT(result) spdlog::trace(L"" __FUNCTIONW__ L" result: {0:X}", (uint64_t) result)
+
+// Detailed Debugging
+#ifdef DETAILED_DEBUG_LOGS
+#define LOG_DEBUG_ONLY(msg, ...) spdlog::debug(__FUNCTION__ " " msg, ##__VA_ARGS__)
+#define WLOG_DEBUG_ONLY(msg, ...) spdlog::debug(L"" __FUNCTIONW__ L" " msg, ##__VA_ARGS__)
+#else
+#define LOG_DEBUG_ONLY(msg, ...)
+#define WLOG_DEBUG_ONLY(msg, ...)
+#endif
+
+// Async Debugging
+#ifdef LOG_ASYNC
+#define LOG_DEBUG_ASYNC(msg, ...) spdlog::debug(__FUNCTION__ " " msg, ##__VA_ARGS__)
+#define WLOG_DEBUG_ASYNC(msg, ...) spdlog::debug(L"" __FUNCTIONW__ L" " msg, ##__VA_ARGS__)
+#else
+#define LOG_DEBUG_ASYNC(msg, ...)
+#define WLOG_DEBUG_ASYNC(msg, ...)
+#endif
 
 // #define TRACKING_LOGS
 
@@ -120,39 +119,11 @@ inline DWORD processId;
 #define LOG_TRACK(msg, ...)
 #endif
 
-#define SAFE_RELEASE(p)                                                                                                \
-    do                                                                                                                 \
-    {                                                                                                                  \
-        if (p && p != nullptr)                                                                                         \
-        {                                                                                                              \
-            (p)->Release();                                                                                            \
-            (p) = nullptr;                                                                                             \
-        }                                                                                                              \
-    } while ((void) 0, 0);
-
-#define SAFE_CLOSE_HANDLE(p)                                                                                           \
-    do                                                                                                                 \
-    {                                                                                                                  \
-        if (p)                                                                                                         \
-        {                                                                                                              \
-            CloseHandle(p);                                                                                            \
-            (p) = nullptr;                                                                                             \
-        }                                                                                                              \
-    } while ((void) 0, 0)
-
 struct feature_version
 {
     unsigned int major;
     unsigned int minor;
     unsigned int patch;
-
-    feature_version() : major(0), minor(0), patch(0) {}
-
-    explicit feature_version(const char* version_str) : major(0), minor(0), patch(0) { parse_version(version_str); }
-
-    constexpr feature_version(unsigned int maj, unsigned int min, unsigned int pat) : major(maj), minor(min), patch(pat)
-    {
-    }
 
     bool operator==(const feature_version& other) const
     {
@@ -175,24 +146,6 @@ struct feature_version
     bool operator<=(const feature_version& other) const { return !(other < *this); }
 
     bool operator>=(const feature_version& other) const { return !(*this < other); }
-
-    void parse_version(const char* version_str)
-    {
-        const char* p = version_str;
-
-        // Skip non-digits at front
-        while (*p)
-        {
-            if (isdigit((unsigned char) p[0]))
-            {
-                if (sscanf_s(p, "%u.%u.%u", &major, &minor, &patch) == 3)
-                    return;
-            }
-            ++p;
-        }
-
-        LOG_WARN("can't parse {0}", version_str);
-    }
 };
 
 namespace VendorId
@@ -244,9 +197,8 @@ inline static void to_lower_in_place(std::string& string)
     std::transform(string.begin(), string.end(), string.begin(), ::tolower);
 }
 
-inline static void to_lower_in_place(std::wstring& wstring)
+#include "OptiTexts.h"
+inline static void to_lower_in_place(std::wstring& string)
 {
-    std::transform(wstring.begin(), wstring.end(), wstring.begin(), ::tolower);
+    std::transform(string.begin(), string.end(), string.begin(), ::towlower);
 }
-
-#include "OptiTypes.h"

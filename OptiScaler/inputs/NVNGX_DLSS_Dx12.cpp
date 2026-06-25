@@ -662,7 +662,8 @@ static NVSDK_NGX_Result TryCreateOptiFeature(ID3D12GraphicsCommandList* InCmdLis
     Dx12Contexts[handleId] = {};
 
     // Retrieve feature implementation
-    if (!FeatureProvider_Dx12::GetFeature(featureName, handleId, InFeatureID, InParameters, &Dx12Contexts[handleId].feature))
+    if (!FeatureProvider_Dx12::GetFeature(featureName, handleId, InFeatureID, InParameters,
+                                          &Dx12Contexts[handleId].feature))
     {
         LOG_ERROR("Failed to retrieve feature implementation for '{}'", featureName);
 
@@ -894,7 +895,7 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_GetFeatureRequirements(
         DLSSGMod::InitDLSSGMod_Dx12();
 
     bool isOptiFeature = FeatureDiscoveryInfo->FeatureID == NVSDK_NGX_Feature_SuperSampling;
-    const bool isModFeature = 
+    const bool isModFeature =
         ((DLSSGMod::isDx12Available() && cfg.FGInput == FGInput::Nukems) || cfg.FGInput == FGInput::DLSSG) &&
         (FeatureDiscoveryInfo->FeatureID == NVSDK_NGX_Feature_FrameGeneration);
 
@@ -904,13 +905,13 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_GetFeatureRequirements(
     {
         if (!FfxApiProxy::IsDenoiserReady())
             FfxApiProxy::InitFfxDx12();
-        
-        /* Somewhat flawed check. ffxQuery can't be used for RR to check support because 
-        this runs before the D3D12Device* is captured, and the newer FFX APIs require it
-        to validate support. Slightly inconvenient, but actually a non-issue. 
 
-        InitNGXParameters() executes later, after the device is available, so full validation 
-        can be done there. All this does is allow the game to actually checks the params 
+        /* Somewhat flawed check. ffxQuery can't be used for RR to check support because
+        this runs before the D3D12Device* is captured, and the newer FFX APIs require it
+        to validate support. Slightly inconvenient, but actually a non-issue.
+
+        InitNGXParameters() executes later, after the device is available, so full validation
+        can be done there. All this does is allow the game to actually checks the params
         instead of failing early.
         */
         if (FfxApiProxy::IsSRReady() && FfxApiProxy::IsDenoiserReady())

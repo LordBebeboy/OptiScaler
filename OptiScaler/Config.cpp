@@ -989,8 +989,7 @@ bool Config::SaveIni()
 
     // FSR-RR
     {
-        ini.SetValue("FSR-RR", "DenoiserMode",
-                     GetIntValue(Instance()->FfxDenoiserMode.value_for_config()).c_str());
+        ini.SetValue("FSR-RR", "DenoiserMode", GetIntValue(Instance()->FfxDenoiserMode.value_for_config()).c_str());
         ini.SetValue("FSR-RR", "DisocclusionThreshold",
                      GetFloatValue(Instance()->FfxDenoiserDisocThreshold.value_for_config()).c_str());
         ini.SetValue("FSR-RR", "CrossBilateralNormalStrength",

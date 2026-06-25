@@ -933,18 +933,18 @@ void LibraryLoadHooks::CheckModulesInMemory()
         TryHookModule(slCommonNamesW, StreamlineHooks::hookCommon);
 
     // XeSS
-    //if (XeSSProxy::Module() == nullptr)
+    // if (XeSSProxy::Module() == nullptr)
     //    TryHookModule(xessNamesW, XeSSProxy::HookXeSS);
 
-    //if (XeSSProxy::ModuleDx11() == nullptr)
-    //    TryHookModule(xessDx11NamesW, XeSSProxy::HookXeSSDx11);
+    // if (XeSSProxy::ModuleDx11() == nullptr)
+    //     TryHookModule(xessDx11NamesW, XeSSProxy::HookXeSSDx11);
 
     // FFX Dx12
-    //if (FfxApiProxy::Dx12Module() == nullptr)
-     //   TryHookModule(ffxDx12NamesW, FfxApiProxy::InitFfxDx12);
+    // if (FfxApiProxy::Dx12Module() == nullptr)
+    //   TryHookModule(ffxDx12NamesW, FfxApiProxy::InitFfxDx12);
 
     // FFX Vulkan
-    //if (FfxApiProxy::VkModule() == nullptr)
+    // if (FfxApiProxy::VkModule() == nullptr)
     //    TryHookModule(ffxVkNamesW, FfxApiProxy::InitFfxVk);
 }
 

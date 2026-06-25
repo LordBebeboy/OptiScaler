@@ -28,7 +28,7 @@ bool TryGetNGXCamConfigFromStreamline(NVSDK_NGX_Parameter* InParameters)
         // FSR 4+ is likely similar. FSR doesn't seem to actually linearize depth (at least the open source ones don't),
         // so these values don't need to be perfect.
         //
-        // Assuming reversed hardware depth, the error should be minimal at middle to far distances. Areas near the 
+        // Assuming reversed hardware depth, the error should be minimal at middle to far distances. Areas near the
         // camera may become overly sensitive to disocclusions, increasing shimmering.
         InParameters->Set(OptiKeys::FSR_NearPlane, nearPlane);
         InParameters->Set(OptiKeys::FSR_FarPlane, farPlane);

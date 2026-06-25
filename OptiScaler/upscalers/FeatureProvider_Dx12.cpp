@@ -24,7 +24,7 @@ bool FeatureProvider_Dx12::GetFeature(std::string_view upscalerName, UINT handle
     std::string_view config_upscaler(upscalerName);
     bool loaded = false;
 
-    // Feature type is fixed during NVSDK_NGX_D3D12_CreateFeature. 
+    // Feature type is fixed during NVSDK_NGX_D3D12_CreateFeature.
     // To change the type, the feature has to be released by the application first.
     if (featureID == NVSDK_NGX_Feature_SuperSampling)
     {
@@ -203,7 +203,8 @@ bool FeatureProvider_Dx12::ChangeFeature(std::string_view upscalerName, ID3D12De
         contextData->feature.reset();
         contextData->featureKey = state.newBackend;
 
-        if (!GetFeature(state.newBackend, handleId, contextData->featureID, contextData->createParams, &contextData->feature))
+        if (!GetFeature(state.newBackend, handleId, contextData->featureID, contextData->createParams,
+                        &contextData->feature))
         {
             LOG_ERROR("Upscaler can't created");
             return false;

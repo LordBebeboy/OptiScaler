@@ -2786,7 +2786,7 @@ bool MenuCommon::RenderMenu()
 
             if (ImGui::BeginTable("main", 2, ImGuiTableFlags_SizingStretchSame))
             {
-                ImGui::TableNextColumn();                
+                ImGui::TableNextColumn();
 
                 if (currentFeature != nullptr && !currentFeature->IsFrozen())
                 {
@@ -2911,7 +2911,8 @@ bool MenuCommon::RenderMenu()
                     // FSR Ray Regeneration version mismatch warning
                     {
                         const bool isDenoiserInstalled = FfxApiProxy::IsDenoiserReady();
-                        const feature_version rrVer = isDenoiserInstalled ? FfxApiProxy::VersionDx12_RR() : feature_version {};
+                        const feature_version rrVer =
+                            isDenoiserInstalled ? FfxApiProxy::VersionDx12_RR() : feature_version {};
                         const feature_version rrTarget = FfxApiProxy::VersionTarget_RR();
                         const bool isDenoiserReady = isDenoiserInstalled && rrVer.major > 0;
 
@@ -3040,7 +3041,7 @@ bool MenuCommon::RenderMenu()
                         if (_ffxUpscalerIndex < 0)
                             _ffxUpscalerIndex = config->FfxUpscalerIndex.value_or_default();
 
-                        if (currentBackend == "fsr31" || currentBackend == OptiKeys::FSR_RR || 
+                        if (currentBackend == "fsr31" || currentBackend == OptiKeys::FSR_RR ||
                             currentBackend == "fsr31_12" && state.ffxUpscalerVersionNames.size() > 0)
                         {
                             ImGui::PushItemWidth(135.0f * menuResScale);
@@ -3351,7 +3352,7 @@ bool MenuCommon::RenderMenu()
                                     ImGui::Spacing();
                                     ImGui::Spacing();
                                 }
-                            }                            
+                            }
                         }
                     }
 
@@ -3382,9 +3383,8 @@ bool MenuCommon::RenderMenu()
 
                                     ImGui::EndCombo();
                                 }
-                                ShowHelpMarker(
-                                    "Sets the denoising mode. "
-                                    "Higher modes are generally higher quality, but more demanding.");
+                                ShowHelpMarker("Sets the denoising mode. "
+                                               "Higher modes are generally higher quality, but more demanding.");
 
                                 ImGui::SameLine();
 
@@ -3455,7 +3455,8 @@ bool MenuCommon::RenderMenu()
                                     "Controls how the smoothing filter adapts to surface details.\n"
                                     "Higher: Filter stretches more to follow surface geometry, reducing rippling and "
                                     "banding on smooth surfaces.\n"
-                                    "Lower: Slightly sharper with weaker smoothing on large surfaces, may increase banding and rippling.\n");
+                                    "Lower: Slightly sharper with weaker smoothing on large surfaces, may increase "
+                                    "banding and rippling.\n");
 
                             if (ImGui::Button("Reset"))
                             {
@@ -3486,7 +3487,8 @@ bool MenuCommon::RenderMenu()
                                     ImGui::Separator();
 
                                     // Checks if the entry with the given name matches the filter - case insensitive
-                                    const auto GetIsInFilter = [](std::string_view haystack, std::string_view needle) -> bool
+                                    const auto GetIsInFilter = [](std::string_view haystack,
+                                                                  std::string_view needle) -> bool
                                     {
                                         if (needle.empty())
                                             return true;
@@ -3495,12 +3497,9 @@ bool MenuCommon::RenderMenu()
                                             const auto charPredicate = [](unsigned char a, unsigned char b)
                                             { return std::tolower(a) == std::tolower(b); };
 
-                                            const auto& result = std::search
-                                            (
-                                                haystack.begin(), haystack.end(),
-                                                needle.begin(), needle.end(), 
-                                                charPredicate 
-                                            );
+                                            const auto& result =
+                                                std::search(haystack.begin(), haystack.end(), needle.begin(),
+                                                            needle.end(), charPredicate);
 
                                             return result != haystack.end();
                                         }
